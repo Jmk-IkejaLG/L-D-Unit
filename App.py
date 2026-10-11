@@ -8,43 +8,116 @@ from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from datetime import date
 
-# --- PAGE SETUP & PASSWORD PROTECTION ---
-st.set_page_config(page_title="L&D Memo App", page_icon="📝", layout="centered")
+# ----------------- BRANDING & CSS -----------------
+st.set_page_config(page_title="Agege L&D Memo App", page_icon="📝", layout="centered")
 
-# The code asks Streamlit's hidden vault for the password
-user_password = st.sidebar.text_input("Enter Office Password", type="password")
+st.markdown("""
+<style>
+    .main { background-color: #f9fbf9; }
+    .stButton>button {
+        background-color: #005a2b !important;
+        color: white !important;
+        border-radius: 8px !important;
+        font-weight: bold !important;
+        width: 100% !important;
+        padding: 12px !important;
+        border: none !important;
+    }
+    .stButton>button:hover { background-color: #003a1b !important; }
+    .stDownloadButton>button {
+        background: linear-gradient(135deg, #1e7e34, #28a745) !important;
+        color: white !important;
+        border-radius: 8px !important;
+        font-weight: bold !important;
+        width: 100% !important;
+        padding: 14px !important;
+    }
+    .card-box {
+        background-color: white;
+        padding: 18px;
+        border-radius: 12px;
+        border-left: 5px solid #005a2b;
+        box-shadow: 0px 4px 6px rgba(0,0,0,0.05);
+        margin-bottom: 12px;
+    }
+    .logo-container {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        background: linear-gradient(90deg, #005a2b, #00401d);
+        padding: 15px;
+        border-radius: 12px;
+        color: white;
+        margin-bottom: 25px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ----------------- SECURE PASS LOCK -----------------
+st.markdown("""
+<div class="logo-container">
+    <div style="font-size: 32px;">🇳🇬</div>
+    <div>
+        <h2 style='margin:0; font-size: 20px; color:white;'>AGEGE LOCAL GOVERNMENT</h2>
+        <p style='margin:0; font-size:12px; opacity:0.9;'>Learning & Development Unit (Admin & HR)</p>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+user_password = st.text_input("🔑 Enter Unit Access Password", type="password")
 
 if user_password != st.secrets["APP_PASSWORD"]:
-    st.warning("🔒 Please enter the correct password in the sidebar to access the L&D Memo Generator.")
-    st.stop() # Stops the app from loading until the password is correct
+    st.warning("🔒 Please enter the correct password to unlock the Memo Generator.")
+    st.stop()
 
-# --- 1. ESTACODE ENGINE ---
-def calculate_allowance(grade_level, days, travel_type="Air"):
+# ----------------- ESTACODE ENGINE -----------------
+def calculate_allowance(grade_level, days, travel_type):
     estacode_rates = {
-        "GL 15-17": {"Air": {"Accom": 165000, "Airfare": 440000, "Transp": 36000, "Incidental": 27000},
-                     "Road": {"Accom": 165000, "Airfare": 0, "Transp": 54000, "Incidental": 27000}},
-        "GL 13-14": {"Air": {"Accom": 124875, "Airfare": 440000, "Transp": 32400, "Incidental": 20250},
-                     "Road": {"Accom": 124875, "Airfare": 0, "Transp": 43200, "Incidental": 20250}},
-        "GL 10-12": {"Air": {"Accom": 82800, "Airfare": 440000, "Transp": 21600, "Incidental": 15187.50},
-                     "Road": {"Accom": 82800, "Airfare": 0, "Transp": 36000, "Incidental": 15187.50}},
-        "GL 07-09": {"Air": {"Accom": 62100, "Airfare": 440000, "Transp": 14400, "Incidental": 10125},
-                     "Road": {"Accom": 62100, "Airfare": 0, "Transp": 27000, "Incidental": 10125}}
+        "GL 15-17": {
+            "Air": {"Accom": 165000, "Airfare": 440000, "Transp": 36000, "Incidental": 27000},
+            "Road": {"Accom": 165000, "Airfare": 0, "Transp": 54000, "Incidental": 27000},
+            "Within Lagos": {"Accom": 0, "Airfare": 0, "Transp": 15600, "Incidental": 27000}
+        },
+        "GL 13-14": {
+            "Air": {"Accom": 124875, "Airfare": 440000, "Transp": 32400, "Incidental": 20250},
+            "Road": {"Accom": 124875, "Airfare": 0, "Transp": 43200, "Incidental": 20250},
+            "Within Lagos": {"Accom": 0, "Airfare": 0, "Transp": 9750, "Incidental": 20250}
+        },
+        "GL 10-12": {
+            "Air": {"Accom": 82800, "Airfare": 440000, "Transp": 21600, "Incidental": 15187.50},
+            "Road": {"Accom": 82800, "Airfare": 0, "Transp": 36000, "Incidental": 15187.50},
+            "Within Lagos": {"Accom": 0, "Airfare": 0, "Transp": 5850, "Incidental": 15187.50}
+        },
+        "GL 07-09": {
+            "Air": {"Accom": 62100, "Airfare": 440000, "Transp": 14400, "Incidental": 10125},
+            "Road": {"Accom": 62100, "Airfare": 0, "Transp": 27000, "Incidental": 10125},
+            "Within Lagos": {"Accom": 0, "Airfare": 0, "Transp": 3900, "Incidental": 10125}
+        }
     }
     rates = estacode_rates.get(grade_level, estacode_rates["GL 10-12"])
-    selected_rates = rates[travel_type]
+    selected = rates[travel_type]
     
-    accom_total = selected_rates["Accom"] * days
-    sub_total = selected_rates["Airfare"] + accom_total + selected_rates["Transp"] + selected_rates["Incidental"]
+    accom_total = selected["Accom"] * days
     
+    if travel_type == "Within Lagos":
+        trans_total = selected["Transp"] * days
+        inc_total = selected["Incidental"]
+        sub_total = trans_total + inc_total
+    else:
+        trans_total = selected["Transp"]
+        inc_total = selected["Incidental"]
+        sub_total = selected["Airfare"] + accom_total + trans_total + inc_total
+        
     return {
+        "Accom_Daily": selected["Accom"],
         "Accom_Total": accom_total,
-        "Airfare": selected_rates["Airfare"],
-        "Transp": selected_rates["Transp"],
-        "Incidental": selected_rates["Incidental"],
+        "Airfare": selected["Airfare"],
+        "Transp": trans_total,
+        "Incidental": inc_total,
         "Sub_Total": sub_total
     }
 
-# --- 2. DOCUMENT GENERATOR ---
+# ----------------- DOCUMENT GENERATOR -----------------
 def generate_memo_docx(subject, memo_date, opening_phrase, participants, part_fee, protocol):
     doc = Document()
     header = doc.add_paragraph()
@@ -57,10 +130,11 @@ def generate_memo_docx(subject, memo_date, opening_phrase, participants, part_fe
     doc.add_paragraph(f"{opening_phrase} I am directed to respectfully request approval for the release of funds in respect of the above-referenced programme. The proposed expenditure is detailed below:")
 
     participants_subtotal = 0
+    valid_p_count = 0
 
     for index, p in enumerate(participants, start=1):
-        # Skip empty rows if accidentally left blank
         if not p.get('Name'): continue 
+        valid_p_count += 1
         
         costs = calculate_allowance(p['GL'], p['Days'], p['Travel_Mode'])
         participants_subtotal += costs['Sub_Total']
@@ -69,10 +143,14 @@ def generate_memo_docx(subject, memo_date, opening_phrase, participants, part_fe
         
         if costs['Airfare'] > 0:
             doc.add_paragraph(f"(a) Airfare: ₦{costs['Airfare']:,.2f}")
-        doc.add_paragraph(f"(b) Accommodation and feeding: ₦{costs['Accom_Total']:,.2f}")
+        if costs['Accom_Total'] > 0:
+            doc.add_paragraph(f"(b) Accommodation and feeding: ₦{costs['Accom_Total']:,.2f}")
         doc.add_paragraph(f"(c) Transportation: ₦{costs['Transp']:,.2f}")
         doc.add_paragraph(f"(d) Incidental: ₦{costs['Incidental']:,.2f}")
         doc.add_paragraph(f"SUB-TOTAL: ₦{costs['Sub_Total']:,.2f}").runs[0].bold = True
+
+    if valid_p_count == 0:
+        return None
 
     grand_total = participants_subtotal + part_fee + protocol
     doc.add_paragraph(f"Participants Sub-total: ₦{participants_subtotal:,.2f}")
@@ -87,82 +165,115 @@ def generate_memo_docx(subject, memo_date, opening_phrase, participants, part_fe
     buffer.seek(0)
     return buffer
 
-# --- 3. AI EXTRACTOR & UI ---
+# ----------------- AI EXTRACTION -----------------
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 def analyze_memo_image(uploaded_file):
     image = Image.open(uploaded_file)
     model = genai.GenerativeModel('gemini-1.5-flash')
+    
     prompt = """
-    You are an expert administrative assistant. Read the attached official invitation memo.
-    Extract the following details and return ONLY a valid JSON object. Do not include markdown formatting.
+    You are an expert administrative assistant parsing official government letters. 
+    CRITICAL INSTRUCTION: Completely IGNORE all handwritten notes, signatures, scribbles, or minute annotations (e.g., "pls treat", "L&D"). 
+    Base your extraction STRICTLY and ONLY on the formal typed/printed text of the document.
+    
+    Extract the following and provide the answer in the EXACT specified JSON format. No additional markdown or conversational responses.
     {
-        "subject_line": "The exact theme or subject of the workshop/meeting",
-        "inviting_body": "The organization or ministry that sent the invitation",
-        "location": "The city where the event will take place",
-        "duration_days": The number of days the event lasts (return as an integer, e.g., 3)
+        "subject_line": "Formulate a dynamic and accurate subject referencing the typed meeting, seminar or retreat title. Standard title, Capital letters",
+        "inviting_body": "Identify the primary inviting authority, commission, host body or organizer from the typed letterhead or sign-off",
+        "location": "Identify the destination city, district, or venue specified for the program in the typed text",
+        "duration_days": Calculate the number of calendar days of the training based on the typed dates (return an integer, e.g., 3. Look for phrases like '27th-29th' to determine 3 days, default to 3 if unclear)"
     }
     """
     response = model.generate_content([prompt, image])
     clean_json = response.text.strip().replace("```json", "").replace("```", "")
     return json.loads(clean_json)
 
-st.title("L&D Memo Generator")
-st.write("Upload a memo to auto-extract details and generate the official .docx file.")
-
-uploaded_file = st.file_uploader("Upload Invitation Memo (JPG/PNG)", type=["jpg", "png", "jpeg"])
+# ----------------- APP PORTAL -----------------
+st.subheader("📸 Upload Invitation or Memo")
+uploaded_file = st.file_uploader("Take a photo or upload a document to read details automatically", type=["jpg", "png", "jpeg"])
 
 if "extracted_data" not in st.session_state:
     st.session_state.extracted_data = None
 
 if uploaded_file:
     if st.session_state.extracted_data is None or st.session_state.get('last_uploaded_name') != uploaded_file.name:
-        with st.spinner("AI is reading the memo..."):
+        with st.spinner("⏳ Analyzing document patterns..."):
             try:
                 st.session_state.extracted_data = analyze_memo_image(uploaded_file)
                 st.session_state.last_uploaded_name = uploaded_file.name
-                st.success("Details extracted successfully!")
+                st.success("🤖 Scan Successful! Extracted metadata below.")
             except Exception as e:
-                st.error("Failed to read the image. Please enter details manually.")
-                st.session_state.extracted_data = {"subject_line": "", "inviting_body": "", "location": "", "duration_days": 3}
+                st.error("⚠️ AI scanning is currently busy. Please fill out details manually below.")
+                st.session_state.extracted_data = {"subject_line": "", "inviting_body": "", "location": "Lagos", "duration_days": 3}
 
-    data = st.session_state.extracted_data
-    subject_line = st.text_input("Memo Subject Line", data.get("subject_line", ""))
-    inviting_body = st.text_input("Inviting Body", data.get("inviting_body", ""))
-    
-    opening_options = [
-        f"In reference to the invitation received from the {inviting_body},",
-        f"On the strength of the invitation received from the {inviting_body},",
-        f"In view of the invitation received from the {inviting_body},",
-        f"Sequel to the invitation received from the {inviting_body},"
-    ]
-    selected_opening = st.selectbox("Select Opening Phrase", opening_options)
-    
-    st.subheader("Participant List")
-    auto_travel_mode = "Air" if "abuja" in data.get("location", "").lower() else "Road"
-    auto_days = data.get("duration_days", 3)
-    
-    # Starting with a blank row instead of hardcoded names
-    blank_participants = [
-        {"Name": "", "Title": "", "GL": "GL 10-12", "Travel_Mode": auto_travel_mode, "Days": auto_days}
-    ]
-    
-    edited_participants = st.data_editor(blank_participants, num_rows="dynamic")
-    
-    st.subheader("Additional Fees")
+data = st.session_state.extracted_data if st.session_state.extracted_data else {"subject_line": "", "inviting_body": "", "location": "Lagos", "duration_days": 3}
+
+st.markdown("<div class='card-box'>🔍 Confirm AI Extraction Findings</div>", unsafe_allow_html=True)
+subject_line = st.text_input("Memo Subject Line (Adjust if incorrect)", data.get("subject_line", ""))
+inviting_body = st.text_input("Inviting Body", data.get("inviting_body", ""))
+
+location = data.get("location", "Lagos").lower()
+is_lagos = "ikeja" in location or "lagos" in location
+
+travel_default = "Within Lagos" if is_lagos else "Road"
+if "abuja" in location:
+    travel_default = "Air"
+
+opening_options = [
+    f"In reference to the invitation received from {inviting_body},",
+    f"On the strength of the invitation received from {inviting_body},",
+    f"In view of the invitation received from {inviting_body},",
+    f"Sequel to the invitation received from {inviting_body},"
+]
+selected_opening = st.selectbox("📝 Opening Sentence Variation", opening_options)
+
+st.subheader("👥 Participant Card List")
+st.write("Add participants below to automatically inject their approved allowances:")
+
+if "participants_list" not in st.session_state:
+    st.session_state.participants_list = [{"Name": "", "Title": "", "GL": "GL 13-14", "Travel_Mode": travel_default, "Days": data.get("duration_days", 3)}]
+
+col_btn1, col_btn2 = st.columns(2)
+with col_btn1:
+    if st.button("➕ Add Officer"):
+        st.session_state.participants_list.append({"Name": "", "Title": "", "GL": "GL 10-12", "Travel_Mode": travel_default, "Days": data.get("duration_days", 3)})
+with col_btn2:
+    if st.button("🗑️ Reset List"):
+        st.session_state.participants_list = [{"Name": "", "Title": "", "GL": "GL 13-14", "Travel_Mode": travel_default, "Days": data.get("duration_days", 3)}]
+
+for index, p in enumerate(st.session_state.participants_list):
+    st.markdown(f"**Participant #{index+1}**")
     col1, col2 = st.columns(2)
     with col1:
-        participatory_fee = st.number_input("Participatory Fees (Total ₦)", value=0)
+        p["Name"] = st.text_input(f"Name", p["Name"], key=f"pname_{index}", placeholder="e.g. OSIKOYA ADESINA")
+        p["Title"] = st.text_input(f"Title", p["Title"], key=f"ptitle_{index}", placeholder="e.g. Council Manager")
     with col2:
-        protocol_fee = st.number_input("Protocol (Total ₦)", value=100000)
+        p["GL"] = st.selectbox(f"Grade Level", ["GL 15-17", "GL 13-14", "GL 10-12", "GL 07-09"], index=["GL 15-17", "GL 13-14", "GL 10-12", "GL 07-09"].index(p["GL"]), key=f"pgl_{index}")
+        p["Travel_Mode"] = st.selectbox(f"Mode", ["Within Lagos", "Air", "Road"], index=["Within Lagos", "Air", "Road"].index(p["Travel_Mode"]), key=f"ptravel_{index}")
+        p["Days"] = st.number_input(f"Days", min_value=1, value=int(p["Days"]), key=f"pdays_{index}")
 
-    if st.button("Generate Memo"):
+st.subheader("💰 Optional Special Allowances")
+col_f1, col_f2 = st.columns(2)
+with col_f1:
+    participatory_fee = st.number_input("Participatory Fees (Combined ₦)", value=0, min_value=0)
+with col_f2:
+    protocol_fee = st.number_input("Protocol (₦)", value=0, min_value=0)
+
+if st.button("📄 Generate & Download Document"):
+    if not any(p["Name"].strip() for p in st.session_state.participants_list):
+        st.error("⚠️ Add at least one Officer to calculate the allowances.")
+    else:
         current_date = date.today().strftime("%dth %B, %Y")
-        docx_file = generate_memo_docx(subject_line, current_date, selected_opening, edited_participants, participatory_fee, protocol_fee)
+        docx_file = generate_memo_docx(subject_line, current_date, selected_opening, st.session_state.participants_list, participatory_fee, protocol_fee)
         
-        st.download_button(
-            label="📥 Download Draft Memo (.docx)",
-            data=docx_file,
-            file_name="LD_Draft_Memo.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
+        if docx_file:
+            st.success("✅ Document Generation Successful!")
+            st.download_button(
+                label="📥 Tap here to Download memo (.docx)",
+                data=docx_file,
+                file_name="L&D_Draft_Memo.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+        else:
+            st.error("Failed to generate. No valid data.")
