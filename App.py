@@ -129,7 +129,6 @@ def calculate_allowance(grade_level, days, travel_type):
 
 # ----------------- DOCUMENT GENERATOR -----------------
 def generate_memo_docx(subject, memo_date, opening_phrase, participants, fee_per_person, protocol):
-    # Step 1: Pre-calculate all totals before writing the document
     valid_participants = [p for p in participants if p.get('Name').strip() != ""]
     if not valid_participants:
         return None
@@ -144,10 +143,8 @@ def generate_memo_docx(subject, memo_date, opening_phrase, participants, fee_per
 
     total_participatory_fee = fee_per_person * len(valid_participants)
     grand_total = participants_subtotal + total_participatory_fee + protocol
-    
     amount_in_words = amount_to_words(grand_total)
 
-    # Step 2: Build the Document
     doc = Document()
     header = doc.add_paragraph()
     header.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -158,11 +155,8 @@ def generate_memo_docx(subject, memo_date, opening_phrase, participants, fee_per
     doc.add_paragraph().add_run(f"RE: {subject.upper()}").bold = True
     
     doc.add_paragraph(f"{opening_phrase} I am directed to respectfully request approval for the release of funds in respect of the above-referenced programme.")
-    
-    # The newly added transition paragraph with dynamic words and numbers
     doc.add_paragraph(f"Accordingly, the sum of {amount_in_words} (₦{grand_total:,.2f}) only is required for sponsorship of the participants.\n\nThe breakdown is as follows:")
 
-    # Write breakdowns
     for index, data in enumerate(calculated_data, start=1):
         p = data["info"]
         costs = data["costs"]
@@ -177,7 +171,6 @@ def generate_memo_docx(subject, memo_date, opening_phrase, participants, fee_per
         doc.add_paragraph(f"(d) Incidental: ₦{costs['Incidental']:,.2f}")
         doc.add_paragraph(f"SUB-TOTAL: ₦{costs['Sub_Total']:,.2f}").runs[0].bold = True
 
-    # Final Totals block
     doc.add_paragraph(f"Participants Sub-total: ₦{participants_subtotal:,.2f}")
     if total_participatory_fee > 0: 
         doc.add_paragraph(f"Participatory Fees (₦{fee_per_person:,.2f} x {len(valid_participants)}): ₦{total_participatory_fee:,.2f}")
@@ -185,7 +178,6 @@ def generate_memo_docx(subject, memo_date, opening_phrase, participants, fee_per
         doc.add_paragraph(f"Protocol: ₦{protocol:,.2f}")
     
     doc.add_paragraph(f"GRAND TOTAL: ₦{grand_total:,.2f}").runs[0].bold = True
-
     doc.add_paragraph(f"Your kind approval is hereby sought for the sum of ₦{grand_total:,.2f}.\n\nThank you.\n\nOLATOKUN A.A. (MRS)\nAsst. Chief Admin & HR\nFor: Human Resource Officer")
 
     buffer = io.BytesIO()
@@ -198,7 +190,9 @@ genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 def analyze_memo_image(uploaded_file):
     image = Image.open(uploaded_file)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    
+    # THE FIX IS RIGHT HERE - using the latest model
+    model = genai.GenerativeModel('gemini-1.5-flash-latest')
     
     prompt = """
     You are an expert administrative assistant parsing official government letters. 
@@ -214,7 +208,6 @@ def analyze_memo_image(uploaded_file):
     }
     """
     
-    # Setting safety settings to 'BLOCK_NONE' to prevent government keywords from triggering false filters
     safety_settings = [
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
         {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -241,7 +234,6 @@ if uploaded_file:
                 st.session_state.last_uploaded_name = uploaded_file.name
                 st.success("🤖 Scan Successful! Extracted metadata below.")
             except Exception as e:
-                # This will now print the exact reason the AI failed on your screen
                 st.error(f"⚠️ AI scanning failed: {str(e)}")
                 st.session_state.extracted_data = {"subject_line": "", "inviting_body": "", "location": "Lagos", "duration_days": 3}
 
