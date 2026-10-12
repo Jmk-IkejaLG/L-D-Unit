@@ -3,17 +3,43 @@ import json
 from PIL import Image
 import streamlit as st
 import io
+import math
 from docx import Document
 from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from datetime import date
+
+# ----------------- NUMBER TO WORDS CONVERTER -----------------
+def amount_to_words(n):
+    """Converts a number to Nigerian Naira English words."""
+    if n == 0: return "Zero Naira"
+    
+    units = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"]
+    tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"]
+    
+    def convert(num):
+        if num < 20: return units[num]
+        if num < 100: return tens[num // 10] + ("-" + units[num % 10] if num % 10 != 0 else "")
+        if num < 1000: return units[num // 100] + " Hundred" + (" and " + convert(num % 100) if num % 100 != 0 else "")
+        
+        for idx, word in enumerate(["Thousand", "Million", "Billion"], 1):
+            if num < 1000 ** (idx + 1):
+                return convert(num // (1000 ** idx)) + " " + word + (", " + convert(num % (1000 ** idx)) if num % (1000 ** idx) != 0 else "")
+
+    n_int = int(math.floor(n))
+    kobo = int(round((n - n_int) * 100))
+    
+    words = convert(n_int) + " Naira"
+    if kobo > 0:
+        words += f" and {convert(kobo)} Kobo"
+        
+    return words
 
 # ----------------- BRANDING & CSS -----------------
 st.set_page_config(page_title="Agege L&D Memo App", page_icon="📝", layout="centered")
 
 st.markdown("""
 <style>
-    .main { background-color: #f9fbf9; }
     .stButton>button {
         background-color: #005a2b !important;
         color: white !important;
@@ -24,22 +50,6 @@ st.markdown("""
         border: none !important;
     }
     .stButton>button:hover { background-color: #003a1b !important; }
-    .stDownloadButton>button {
-        background: linear-gradient(135deg, #1e7e34, #28a745) !important;
-        color: white !important;
-        border-radius: 8px !important;
-        font-weight: bold !important;
-        width: 100% !important;
-        padding: 14px !important;
-    }
-    .card-box {
-        background-color: white;
-        padding: 18px;
-        border-radius: 12px;
-        border-left: 5px solid #005a2b;
-        box-shadow: 0px 4px 6px rgba(0,0,0,0.05);
-        margin-bottom: 12px;
-    }
     .logo-container {
         display: flex;
         align-items: center;
@@ -118,7 +128,26 @@ def calculate_allowance(grade_level, days, travel_type):
     }
 
 # ----------------- DOCUMENT GENERATOR -----------------
-def generate_memo_docx(subject, memo_date, opening_phrase, participants, part_fee, protocol):
+def generate_memo_docx(subject, memo_date, opening_phrase, participants, fee_per_person, protocol):
+    # Step 1: Pre-calculate all totals before writing the document
+    valid_participants = [p for p in participants if p.get('Name').strip() != ""]
+    if not valid_participants:
+        return None
+
+    participants_subtotal = 0
+    calculated_data = []
+
+    for p in valid_participants:
+        costs = calculate_allowance(p['GL'], p['Days'], p['Travel_Mode'])
+        participants_subtotal += costs['Sub_Total']
+        calculated_data.append({"info": p, "costs": costs})
+
+    total_participatory_fee = fee_per_person * len(valid_participants)
+    grand_total = participants_subtotal + total_participatory_fee + protocol
+    
+    amount_in_words = amount_to_words(grand_total)
+
+    # Step 2: Build the Document
     doc = Document()
     header = doc.add_paragraph()
     header.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -127,17 +156,16 @@ def generate_memo_docx(subject, memo_date, opening_phrase, participants, part_fe
 
     doc.add_paragraph(f"From: Learning & Development Unit\nAdmin & HR Department\nAgege Local Government\nRef: AGLG/GEN/177/007\n\nTo: The Executive Chairman\nThru: The Council Manager\nThru: The Human Resource Officer\nDate: {memo_date}")
     doc.add_paragraph().add_run(f"RE: {subject.upper()}").bold = True
-    doc.add_paragraph(f"{opening_phrase} I am directed to respectfully request approval for the release of funds in respect of the above-referenced programme. The proposed expenditure is detailed below:")
+    
+    doc.add_paragraph(f"{opening_phrase} I am directed to respectfully request approval for the release of funds in respect of the above-referenced programme.")
+    
+    # The newly added transition paragraph with dynamic words and numbers
+    doc.add_paragraph(f"Accordingly, the sum of {amount_in_words} (₦{grand_total:,.2f}) only is required for sponsorship of the participants.\n\nThe breakdown is as follows:")
 
-    participants_subtotal = 0
-    valid_p_count = 0
-
-    for index, p in enumerate(participants, start=1):
-        if not p.get('Name'): continue 
-        valid_p_count += 1
-        
-        costs = calculate_allowance(p['GL'], p['Days'], p['Travel_Mode'])
-        participants_subtotal += costs['Sub_Total']
+    # Write breakdowns
+    for index, data in enumerate(calculated_data, start=1):
+        p = data["info"]
+        costs = data["costs"]
         
         doc.add_paragraph().add_run(f"{index}. {p['Name']} | {p['Title']} [{p['GL']}]").bold = True
         
@@ -149,13 +177,13 @@ def generate_memo_docx(subject, memo_date, opening_phrase, participants, part_fe
         doc.add_paragraph(f"(d) Incidental: ₦{costs['Incidental']:,.2f}")
         doc.add_paragraph(f"SUB-TOTAL: ₦{costs['Sub_Total']:,.2f}").runs[0].bold = True
 
-    if valid_p_count == 0:
-        return None
-
-    grand_total = participants_subtotal + part_fee + protocol
+    # Final Totals block
     doc.add_paragraph(f"Participants Sub-total: ₦{participants_subtotal:,.2f}")
-    if part_fee > 0: doc.add_paragraph(f"Participatory Fees: ₦{part_fee:,.2f}")
-    if protocol > 0: doc.add_paragraph(f"Protocol: ₦{protocol:,.2f}")
+    if total_participatory_fee > 0: 
+        doc.add_paragraph(f"Participatory Fees (₦{fee_per_person:,.2f} x {len(valid_participants)}): ₦{total_participatory_fee:,.2f}")
+    if protocol > 0: 
+        doc.add_paragraph(f"Protocol: ₦{protocol:,.2f}")
+    
     doc.add_paragraph(f"GRAND TOTAL: ₦{grand_total:,.2f}").runs[0].bold = True
 
     doc.add_paragraph(f"Your kind approval is hereby sought for the sum of ₦{grand_total:,.2f}.\n\nThank you.\n\nOLATOKUN A.A. (MRS)\nAsst. Chief Admin & HR\nFor: Human Resource Officer")
@@ -174,18 +202,27 @@ def analyze_memo_image(uploaded_file):
     
     prompt = """
     You are an expert administrative assistant parsing official government letters. 
-    CRITICAL INSTRUCTION: Completely IGNORE all handwritten notes, signatures, scribbles, or minute annotations (e.g., "pls treat", "L&D"). 
+    CRITICAL INSTRUCTION: Completely IGNORE all handwritten notes, signatures, scribbles, or minute annotations. 
     Base your extraction STRICTLY and ONLY on the formal typed/printed text of the document.
     
-    Extract the following and provide the answer in the EXACT specified JSON format. No additional markdown or conversational responses.
+    Extract the following and provide the answer in the EXACT specified JSON format. No additional markdown.
     {
         "subject_line": "Formulate a dynamic and accurate subject referencing the typed meeting, seminar or retreat title. Standard title, Capital letters",
-        "inviting_body": "Identify the primary inviting authority, commission, host body or organizer from the typed letterhead or sign-off",
-        "location": "Identify the destination city, district, or venue specified for the program in the typed text",
-        "duration_days": Calculate the number of calendar days of the training based on the typed dates (return an integer, e.g., 3. Look for phrases like '27th-29th' to determine 3 days, default to 3 if unclear)"
+        "inviting_body": "Identify the primary inviting authority, commission, host body or organizer",
+        "location": "Identify the destination city, district, or venue specified for the program",
+        "duration_days": Calculate the number of calendar days of the training based on dates (return an integer, e.g., 3)"
     }
     """
-    response = model.generate_content([prompt, image])
+    
+    # Setting safety settings to 'BLOCK_NONE' to prevent government keywords from triggering false filters
+    safety_settings = [
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+    ]
+    
+    response = model.generate_content([prompt, image], safety_settings=safety_settings)
     clean_json = response.text.strip().replace("```json", "").replace("```", "")
     return json.loads(clean_json)
 
@@ -204,13 +241,14 @@ if uploaded_file:
                 st.session_state.last_uploaded_name = uploaded_file.name
                 st.success("🤖 Scan Successful! Extracted metadata below.")
             except Exception as e:
-                st.error("⚠️ AI scanning is currently busy. Please fill out details manually below.")
+                # This will now print the exact reason the AI failed on your screen
+                st.error(f"⚠️ AI scanning failed: {str(e)}")
                 st.session_state.extracted_data = {"subject_line": "", "inviting_body": "", "location": "Lagos", "duration_days": 3}
 
 data = st.session_state.extracted_data if st.session_state.extracted_data else {"subject_line": "", "inviting_body": "", "location": "Lagos", "duration_days": 3}
 
-st.markdown("<div class='card-box'>🔍 Confirm AI Extraction Findings</div>", unsafe_allow_html=True)
-subject_line = st.text_input("Memo Subject Line (Adjust if incorrect)", data.get("subject_line", ""))
+st.markdown("### 🔍 AI Extraction Findings")
+subject_line = st.text_input("Memo Subject Line", data.get("subject_line", ""))
 inviting_body = st.text_input("Inviting Body", data.get("inviting_body", ""))
 
 location = data.get("location", "Lagos").lower()
@@ -229,7 +267,6 @@ opening_options = [
 selected_opening = st.selectbox("📝 Opening Sentence Variation", opening_options)
 
 st.subheader("👥 Participant Card List")
-st.write("Add participants below to automatically inject their approved allowances:")
 
 if "participants_list" not in st.session_state:
     st.session_state.participants_list = [{"Name": "", "Title": "", "GL": "GL 13-14", "Travel_Mode": travel_default, "Days": data.get("duration_days", 3)}]
@@ -256,9 +293,9 @@ for index, p in enumerate(st.session_state.participants_list):
 st.subheader("💰 Optional Special Allowances")
 col_f1, col_f2 = st.columns(2)
 with col_f1:
-    participatory_fee = st.number_input("Participatory Fees (Combined ₦)", value=0, min_value=0)
+    participatory_fee = st.number_input("Participatory Fee (PER PARTICIPANT ₦)", value=0, min_value=0)
 with col_f2:
-    protocol_fee = st.number_input("Protocol (₦)", value=0, min_value=0)
+    protocol_fee = st.number_input("Protocol (Total ₦)", value=0, min_value=0)
 
 if st.button("📄 Generate & Download Document"):
     if not any(p["Name"].strip() for p in st.session_state.participants_list):
@@ -275,5 +312,3 @@ if st.button("📄 Generate & Download Document"):
                 file_name="L&D_Draft_Memo.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
-        else:
-            st.error("Failed to generate. No valid data.")
